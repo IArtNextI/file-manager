@@ -1,8 +1,0 @@
-{
-    "C_Cpp.default.configurationProvider": "ms-vscode.cmake-tools",
-    "files.associations": {
-        "termios.h": "c",
-        "terminal.h": "c",
-        "string.h": "c"
-    }
-}
