@@ -1,5 +1,7 @@
 #define _DEFAULT_SOURCE
+#define _LARGEFILE64_SOURCE
 
+#include <errno.h>
 #include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -36,12 +38,18 @@ void clear_error_line(int line, int width) {
 
 void do_error(const char* message, int line, int width) {
     vector_char* msg = create_char(width, ' ');
-    snprintf(msg->data, width - 1, "\e[%d;0H%s", line, message);
+    snprintf(msg->data, width, "\e[%d;0H%s", line, message);
     msg->data[strlen(msg->data)] = ' ';
     *back_char(msg) = '\0';
-    printf(msg->data);
+    printf("%s", msg->data);
     fflush(stdout);
     free_char(msg);
+}
+
+vector_char* concat_path(const char* first, const char* second) {
+    vector_char* result = reserve_junk_char(strlen(first) + 1 + strlen(second) + 1);
+    sprintf(result->data, "%s/%s", first, second);
+    return result;
 }
 
 int main() {
@@ -86,6 +94,9 @@ int main() {
     bool moved_cursor = true;
     vector_DirectoryEntry* current = NULL;
     int shift = 0;
+    int saved_fd_for_copy = -1;
+    vector_char* saved_full_path_for_copy = NULL;
+    vector_char* saved_filename_for_copy = NULL;
     while (true) {
         bool need_to_redraw = false;
         if (switched_folders) {
@@ -102,8 +113,14 @@ int main() {
             fprintf(stderr, "Failed to fetch terminal size");
             return 1;
         }
+        if (winsz.ws_row < 2) {
+            do_error("I cannot work with this kind of terminal size, sorry :(", winsz.ws_row, winsz.ws_col);
+            continue;
+        }
         if (winsz.ws_row != prev.ws_row || winsz.ws_col != prev.ws_col || switched_folders) {
             need_to_redraw = true;
+            cursor_line = 1;
+            shift = 0;
         }
         prev = winsz;
         if (need_to_redraw) {
@@ -119,9 +136,12 @@ int main() {
             }
             for (int i = shift; i < shift + to_print; ++i) {
                 vector_char* line = form_line(current_path, &current->data[i]);
+                if (line->size > winsz.ws_col) {
+                    line->data[winsz.ws_col - 1] = '\0';
+                }
                 printf("   %s", line->data);
-                if (line->size + 3 < winsz.ws_col) {
-                    vector_char* spaces = create_char(winsz.ws_col - line->size - 3, ' ');
+                if (line->size + 3 - (13 * (current->data[i].type != DT_REG)) < winsz.ws_col) {
+                    vector_char* spaces = create_char(winsz.ws_col - line->size - 3 + (13 * (current->data[i].type != DT_REG)), ' ');
                     *(back_char(spaces)) = '\0';
                     printf("%s\n", spaces->data);
                     free_char(spaces);
@@ -163,10 +183,9 @@ int main() {
             if (is_one_dot(current->data[shift + cursor_line - 1].name) || is_two_dots(current->data[shift + cursor_line - 1].name)) {
                 continue;
             }
-            vector_char* name_of_file = reserve_junk_char(strlen(current_path) + 1 + strlen(current->data[shift + cursor_line - 1].name) + 1);
-            sprintf(name_of_file->data, "%s/%s", current_path, current->data[shift + cursor_line - 1].name);
+            vector_char* name_of_file = concat_path(current_path, current->data[shift + cursor_line - 1].name);
+            errno = 0;
             int ret = remove(name_of_file->data);
-            free_char(name_of_file);
             if (ret == 0) {
                 switched_folders = true;
                 moved_cursor = true;
@@ -175,11 +194,15 @@ int main() {
                 }
             }
             else {
-                do_error("Something went wrong", winsz.ws_row, winsz.ws_col);
+                vector_char* msg = create_char(winsz.ws_col, '\0');
+                snprintf(msg->data, msg->size, "%s '%s' : %s", "Could not delete at path", name_of_file->data, strerror(errno));
+                do_error(msg->data, winsz.ws_row, winsz.ws_col);
+                free_char(msg);
             }
+            free_char(name_of_file);
         }
         if (c == '\n') {
-            do_error(current->data[shift + cursor_line - 1].name, winsz.ws_row, winsz.ws_col);
+            do_error(current->data[shift + cursor_line - 1].name, winsz.ws_row, winsz.ws_col); // TODO : delete it
             if (current->data[shift + cursor_line - 1].type == DT_DIR) {
                 int len = strlen(current_path);
                 if (is_one_dot(current->data[shift + cursor_line - 1].name)) {
@@ -205,6 +228,68 @@ int main() {
                 cursor_line = 1;
             }
         }
+        if (c == 'c') {
+            if (current->data[shift + cursor_line - 1].type == DT_DIR) {
+                do_error("Directory copying is not supported, sorry :(", winsz.ws_row, winsz.ws_col);
+                continue;
+            }
+            if (saved_fd_for_copy != -1) {
+                free_char(saved_filename_for_copy);
+                free_char(saved_full_path_for_copy);
+                close(saved_fd_for_copy);
+            }
+            vector_char* name_of_file = concat_path(current_path, current->data[shift + cursor_line - 1].name);
+            errno = 0;
+            saved_fd_for_copy = open(name_of_file->data, O_RDONLY | O_LARGEFILE);
+
+            if (saved_fd_for_copy < 0) {
+                saved_fd_for_copy = -1;
+                vector_char* msg = create_char(winsz.ws_col, '\0');
+                snprintf(msg->data, msg->size, "%s '%s' : %s", "Failed to initiize copying of the file at ", name_of_file->data, strerror(errno));
+                do_error(msg->data, winsz.ws_row, winsz.ws_col);
+                free_char(msg);
+                free_char(name_of_file);
+                continue;
+            }
+            saved_full_path_for_copy = create_char(name_of_file->size, '\0');
+            memcpy(saved_full_path_for_copy->data, name_of_file->data, name_of_file->size);
+
+            saved_filename_for_copy = create_char(sizeof(current->data[shift + cursor_line - 1].name), '\0');
+            memcpy(saved_filename_for_copy->data, current->data[shift + cursor_line - 1].name, saved_filename_for_copy->size);
+            free_char(name_of_file);
+        }
+        if (c == 'v') {
+            if (saved_fd_for_copy == -1) {
+                do_error("Failed to insert a file : No file currently copied", winsz.ws_row, winsz.ws_col);
+                continue;
+            }
+            vector_char* name_of_file = concat_path(current_path, saved_filename_for_copy->data);
+            errno = 0;
+            int fd_to_write = open(name_of_file->data, O_WRONLY | O_CREAT | O_TRUNC | O_LARGEFILE);
+
+            if (fd_to_write < 0) {
+                vector_char* msg = create_char(winsz.ws_col, '\0');
+                snprintf(msg->data, msg->size, "%s '%s' : %s", "Failed to write a file to ", name_of_file->data, strerror(errno));
+                do_error(msg->data, winsz.ws_row, winsz.ws_col);
+                free_char(msg);
+                free_char(name_of_file);
+                continue;
+            }
+
+            static char buffer[4096];
+
+            int to_write;
+            while ((to_write = read(saved_fd_for_copy, buffer, 4096)) != 0) {
+                int written = 0;
+                do {
+                    written += write(fd_to_write, buffer + written, to_write - written);
+                } while (written != to_write);
+            }
+
+            close(fd_to_write);
+
+            free_char(name_of_file);
+        }
         if (c == '\e') {
             if (!read_char_fd(fd, &c)) { // [ symbol is useless
                 break;
@@ -225,7 +310,7 @@ int main() {
             } else if (c == 'B') {
                 ++cursor_line;
                 if (cursor_line == winsz.ws_row || cursor_line == current->size + 1) {
-                    if (shift + winsz.ws_row - 1 < current->size - 1) {
+                    if (shift + winsz.ws_row - 1 <= current->size - 1) {
                         ++shift;
                         force_redraw = true;
                     }
@@ -236,6 +321,8 @@ int main() {
         }
     }
 
+    free_char(saved_full_path_for_copy);
+    free_char(saved_filename_for_copy);
     tcsetattr(fd, TCSANOW, &old);
     free_DirectoryEntry(current);
     free(current_path);

@@ -97,7 +97,9 @@
         return &vector->data[vector->size - 1];                                \
     }                                                                          \
     static void free_##type(vector_##type *vector) {                           \
-        free(vector->data);                                                    \
+        if (vector) {                                                          \
+            free(vector->data);                                                \
+        }                                                                      \
         free(vector);                                                          \
     }                                                                          \
     static bool double_in_size_##type(vector_##type *vector) {                 \
