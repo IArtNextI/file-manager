@@ -47,7 +47,7 @@ void do_error(const char* message, int line, int width) {
 }
 
 vector_char* concat_path(const char* first, const char* second) {
-    vector_char* result = reserve_junk_char(strlen(first) + 1 + strlen(second) + 1);
+    vector_char* result = create_char(strlen(first) + 1 + strlen(second) + 1, '\0');
     sprintf(result->data, "%s/%s", first, second);
     return result;
 }
@@ -97,6 +97,8 @@ int main() {
     int saved_fd_for_copy = -1;
     vector_char* saved_full_path_for_copy = NULL;
     vector_char* saved_filename_for_copy = NULL;
+    mode_t saved_mode_for_copy = 0;
+    bool need_to_delete_source_for_copy = false;
     while (true) {
         bool need_to_redraw = false;
         if (switched_folders) {
@@ -195,13 +197,13 @@ int main() {
             }
             else {
                 vector_char* msg = create_char(winsz.ws_col, '\0');
-                snprintf(msg->data, msg->size, "%s '%s' : %s", "Could not delete at path", name_of_file->data, strerror(errno));
+                snprintf(msg->data, msg->size, "%s : %s", "Could not delete", strerror(errno));
                 do_error(msg->data, winsz.ws_row, winsz.ws_col);
                 free_char(msg);
             }
             free_char(name_of_file);
         }
-        if (c == '\n') {
+        else if (c == '\n') {
             do_error(current->data[shift + cursor_line - 1].name, winsz.ws_row, winsz.ws_col); // TODO : delete it
             if (current->data[shift + cursor_line - 1].type == DT_DIR) {
                 int len = strlen(current_path);
@@ -220,6 +222,15 @@ int main() {
                 else {
                     char* other = calloc(len + 1 + strlen(current->data[shift + cursor_line - 1].name) + 1, 1);
                     sprintf(other, "%s/%s", current_path, current->data[shift + cursor_line - 1].name);
+                    errno = 0;
+                    if (access(other, R_OK) != 0) {
+                        vector_char* msg = create_char(winsz.ws_col, ' ');
+                        snprintf(msg->data, msg->size, "%s : %s", "Failed to open directory", strerror(errno));
+                        do_error(msg->data, winsz.ws_row, winsz.ws_col);
+                        free_char(msg);
+                        free(other);
+                        continue;
+                    }
                     free(current_path);
                     current_path = other;
                 }
@@ -228,7 +239,7 @@ int main() {
                 cursor_line = 1;
             }
         }
-        if (c == 'c') {
+        else if (c == 'c') {
             if (current->data[shift + cursor_line - 1].type == DT_DIR) {
                 do_error("Directory copying is not supported, sorry :(", winsz.ws_row, winsz.ws_col);
                 continue;
@@ -238,6 +249,7 @@ int main() {
                 free_char(saved_full_path_for_copy);
                 close(saved_fd_for_copy);
             }
+            need_to_delete_source_for_copy = false;
             vector_char* name_of_file = concat_path(current_path, current->data[shift + cursor_line - 1].name);
             errno = 0;
             saved_fd_for_copy = open(name_of_file->data, O_RDONLY | O_LARGEFILE);
@@ -245,7 +257,7 @@ int main() {
             if (saved_fd_for_copy < 0) {
                 saved_fd_for_copy = -1;
                 vector_char* msg = create_char(winsz.ws_col, '\0');
-                snprintf(msg->data, msg->size, "%s '%s' : %s", "Failed to initiize copying of the file at ", name_of_file->data, strerror(errno));
+                snprintf(msg->data, msg->size, "%s : %s", "Failed to initiize copying of the file at ", strerror(errno));
                 do_error(msg->data, winsz.ws_row, winsz.ws_col);
                 free_char(msg);
                 free_char(name_of_file);
@@ -256,41 +268,103 @@ int main() {
 
             saved_filename_for_copy = create_char(sizeof(current->data[shift + cursor_line - 1].name), '\0');
             memcpy(saved_filename_for_copy->data, current->data[shift + cursor_line - 1].name, saved_filename_for_copy->size);
+
+            struct stat st;
+            stat(name_of_file->data, &st);
+            saved_mode_for_copy = st.st_mode;
+
             free_char(name_of_file);
         }
-        if (c == 'v') {
-            if (saved_fd_for_copy == -1) {
-                do_error("Failed to insert a file : No file currently copied", winsz.ws_row, winsz.ws_col);
+        else if (c == 'x') {
+            if (current->data[shift + cursor_line - 1].type == DT_DIR) {
+                do_error("Directory cutting is not supported, sorry :(", winsz.ws_row, winsz.ws_col);
                 continue;
             }
-            vector_char* name_of_file = concat_path(current_path, saved_filename_for_copy->data);
+            if (saved_fd_for_copy != -1) {
+                free_char(saved_filename_for_copy);
+                free_char(saved_full_path_for_copy);
+                close(saved_fd_for_copy);
+            }
+            need_to_delete_source_for_copy = true;
+            vector_char* name_of_file = concat_path(current_path, current->data[shift + cursor_line - 1].name);
             errno = 0;
-            int fd_to_write = open(name_of_file->data, O_WRONLY | O_CREAT | O_TRUNC | O_LARGEFILE);
+            saved_fd_for_copy = open(name_of_file->data, O_RDONLY | O_LARGEFILE);
 
-            if (fd_to_write < 0) {
+            if (saved_fd_for_copy < 0) {
+                saved_fd_for_copy = -1;
                 vector_char* msg = create_char(winsz.ws_col, '\0');
-                snprintf(msg->data, msg->size, "%s '%s' : %s", "Failed to write a file to ", name_of_file->data, strerror(errno));
+                snprintf(msg->data, msg->size, "%s : %s", "Failed to initiize cutting of the file", strerror(errno));
                 do_error(msg->data, winsz.ws_row, winsz.ws_col);
                 free_char(msg);
                 free_char(name_of_file);
                 continue;
             }
+            saved_full_path_for_copy = create_char(name_of_file->size, '\0');
+            memcpy(saved_full_path_for_copy->data, name_of_file->data, name_of_file->size);
 
-            static char buffer[4096];
+            saved_filename_for_copy = create_char(sizeof(current->data[shift + cursor_line - 1].name), '\0');
+            memcpy(saved_filename_for_copy->data, current->data[shift + cursor_line - 1].name, saved_filename_for_copy->size);
 
-            int to_write;
-            while ((to_write = read(saved_fd_for_copy, buffer, 4096)) != 0) {
-                int written = 0;
-                do {
-                    written += write(fd_to_write, buffer + written, to_write - written);
-                } while (written != to_write);
-            }
-
-            close(fd_to_write);
+            struct stat st;
+            stat(name_of_file->data, &st);
+            saved_mode_for_copy = st.st_mode;
 
             free_char(name_of_file);
         }
-        if (c == '\e') {
+        else if (c == 'v') {
+            if (saved_fd_for_copy == -1) {
+                do_error("Failed to insert a file : No file currently copied", winsz.ws_row, winsz.ws_col);
+                continue;
+            }
+            vector_char* name_of_file = concat_path(current_path, saved_filename_for_copy->data);
+            if (need_to_delete_source_for_copy) {
+                errno = 0;
+                int ret = rename(saved_full_path_for_copy->data, name_of_file->data);
+                if (ret != 0) {
+                    vector_char* msg = create_char(winsz.ws_col, '\0');
+                    snprintf(msg->data, msg->size, "%s : %s", "Failed to rename a file", strerror(errno) /*saved_full_path_for_copy->data, name_of_file->data*/);
+                    do_error(msg->data, winsz.ws_row, winsz.ws_col);
+                    free_char(msg);
+                }
+                free_char(name_of_file);
+                close(saved_fd_for_copy);
+                free_char(saved_filename_for_copy);
+                free_char(saved_full_path_for_copy);
+                need_to_delete_source_for_copy = false;
+                saved_filename_for_copy = NULL;
+                saved_full_path_for_copy = NULL;
+                saved_fd_for_copy = -1;
+                switched_folders = true;
+            }
+            else {
+                errno = 0;
+                int fd_to_write = open(name_of_file->data, O_WRONLY | O_CREAT | O_TRUNC | O_LARGEFILE, saved_mode_for_copy);
+
+                if (fd_to_write < 0) {
+                    vector_char* msg = create_char(winsz.ws_col, '\0');
+                    snprintf(msg->data, msg->size, "%s : %s", "Failed to write a file to ", strerror(errno));
+                    do_error(msg->data, winsz.ws_row, winsz.ws_col);
+                    free_char(msg);
+                    free_char(name_of_file);
+                    continue;
+                }
+
+                static char buffer[4096];
+
+                int to_write;
+                while ((to_write = read(saved_fd_for_copy, buffer, 4096)) != 0) {
+                    int written = 0;
+                    do {
+                        written += write(fd_to_write, buffer + written, to_write - written);
+                    } while (written != to_write);
+                }
+
+                close(fd_to_write);
+                switched_folders = true;
+                free_char(name_of_file);
+            }
+        }
+        else if (c == '\e') {
             if (!read_char_fd(fd, &c)) { // [ symbol is useless
                 break;
             }
@@ -318,6 +392,9 @@ int main() {
                 }
                 moved_cursor = true;
             }
+        }
+        else {
+            moved_cursor = true;
         }
     }
 

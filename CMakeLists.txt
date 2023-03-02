@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.13)
 
 project(FileManager)
 
-option(SANITIZERS "Build with sanitizers" ON)
+option(SANITIZERS "Build with sanitizers" OFF)
 
 if (SANITIZERS)
     add_compile_options(-fsanitize=address -fsanitize=undefined -fsanitize=leak -fno-sanitize-recover)
