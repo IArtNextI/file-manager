@@ -3,6 +3,7 @@
 
 #include "manager.h"
 #include "terminal.h"
+#include <dlfcn.h>
 
 bool read_char_fd(int fd, char* c) {
     int ret = read(fd, c, 1);
@@ -73,7 +74,7 @@ bool load_working_directory(char** line) {
     return (*line) != NULL;
 }
 
-int run_manager(int input_fd) {
+int run_manager(int input_fd, const char* caller_directory) {
     char* current_path;
     if (!load_working_directory(&current_path)) {
         fprintf(stderr, "Failed to load current working directory name");
@@ -264,6 +265,48 @@ int run_manager(int input_fd) {
                 switched_folders = true;
                 moved_cursor = true;
                 cursor_line = 1;
+            }
+            else if (current->data[shift + cursor_line - 1].type == DT_REG) {
+                // else need to look up a dynamic lib
+                int sz = strlen(current->data[shift + cursor_line - 1].name);
+                int ptr = sz - 1;
+                while (ptr >= 0 && current->data[shift + cursor_line - 1].name[ptr] != '.') {
+                    --ptr;
+                }
+                if (ptr < 0) {
+                    do_error("I don't know how to work with this file", winsz.ws_row, winsz.ws_col);
+                    continue;
+                }
+                vector_char* extension = reserve_char(sz - ptr + 20, '\0');
+                for (++ptr; ptr < sz; ++ptr) {
+                    push_back_char(extension, current->data[shift + cursor_line - 1].name[ptr]);
+                }
+                vector_char* required_filename = create_char(strlen(caller_directory) + 1 + 3 + sz - ptr + 50, '\0');
+                snprintf(required_filename->data, required_filename->size, "%s/file-manager-plugins/lib%s.so", caller_directory, extension->data);
+
+                void* handle = dlopen(required_filename->data, RTLD_LAZY);
+                if (!handle) {
+                    do_error(extension->data, winsz.ws_row, winsz.ws_col);
+                    free_char(extension);
+                    free_char(required_filename);
+                    continue;
+                }
+
+                void (*func)(const char*) = dlsym(handle, "open_file");
+                if (!func) {
+                    do_error("Could not find the required function in lib", winsz.ws_row, winsz.ws_col);
+                    free_char(extension);
+                    free_char(required_filename);
+                    continue;
+                }
+
+                vector_char* filename = concat_path(current_path, current->data[shift + cursor_line - 1].name);
+
+                (*func)(filename->data);
+
+                free_char(extension);
+                free_char(filename);
+                free_char(required_filename);
             }
         }
         else if (c == 'c') {

@@ -10,6 +10,7 @@ if (SANITIZERS)
 endif()
 
 add_subdirectory(Libs)
+add_subdirectory(sample-plugins)
 
 add_executable(manager
     main.c
@@ -17,4 +18,5 @@ add_executable(manager
 
 target_link_libraries(manager PRIVATE
     manager_lib
+    dl
 )

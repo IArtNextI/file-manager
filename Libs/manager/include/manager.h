@@ -40,4 +40,4 @@ bool push_teminal_settings(int input_fd, TerminalSettings* settings);
 
 bool load_working_directory(char** line);
 
-int run_manager(int input_fd);
+int run_manager(int input_fd, const char* caller_directory);

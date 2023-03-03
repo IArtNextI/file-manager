@@ -33,8 +33,15 @@ int main() {
         return 1;
     }
 
-    int ret = run_manager(input_fd);
+    char* caller_directory;
+    if (!load_working_directory(&caller_directory)) {
+        fprintf(stderr, "Failed to load working directory");
+        return 1;
+    }
 
+    int ret = run_manager(input_fd, caller_directory);
+
+    free(caller_directory);
     push_teminal_settings(input_fd, &old_settings);
     close(input_fd);
     return ret;

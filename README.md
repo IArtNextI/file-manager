@@ -9,3 +9,15 @@ mkdir build && cd build
 cmake ..
 make
 ```
+
+## Plugins
+
+Manager supports plugins to open different file types:
+
+In order for it to work, you have create a folder named **file-manager-plugins** in the directory from which the executable is called.
+
+On the event of **Enter** being pressed on a file with specified **extension**, manager looks for a **lib\<extension\>.so** file and looks for a defined **void open_file(const char* filename)** handle.
+
+e.g. when **Enter** is pressed on a file called "a.txt", the required lib is **libtxt.so**
+
+If the required handle is found, it is called with **filename** parameter being equal to the absolute path to the filename.
