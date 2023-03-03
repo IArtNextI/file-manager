@@ -28,7 +28,7 @@ In order for it to work, you have create a folder named **file-manager-plugins**
 
 On the event of **Enter** being pressed on a file with specified **extension**, manager looks for a **lib\<extension\>.so** file and looks for a defined **void open_file(const char* filename)** handle.
 
-e.g. when **Enter** is pressed on a file called "a.txt", the required lib is **libtxt.so**
+e.g. if **Enter** is pressed on a file called "a.txt", the required lib is **libtxt.so**
 
 If the required handle is found, it is called with **filename** parameter being equal to the absolute path to the filename.
 
