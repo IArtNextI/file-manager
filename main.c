@@ -99,6 +99,8 @@ int main() {
     vector_char* saved_filename_for_copy = NULL;
     mode_t saved_mode_for_copy = 0;
     bool need_to_delete_source_for_copy = false;
+    bool filter_out_hidden_files = false;
+    bool had_files_to_drop = false;
     while (true) {
         bool need_to_redraw = false;
         if (switched_folders) {
@@ -130,6 +132,28 @@ int main() {
                 free_DirectoryEntry(current);
             }
             current = load_directory(current_path);
+            if (filter_out_hidden_files) {
+                had_files_to_drop = false;
+                int insz = current->size;
+                int ok_ptr = insz - 1;
+                for (int i = 0; i < insz; ++i) {
+                    if (is_one_dot(current->data[i].name) || is_two_dots(current->data[i].name)) {
+                        continue;
+                    }
+                    if (current->data[i].name[0] == '.') {
+                        if (ok_ptr > i) {
+                            had_files_to_drop = true;
+                            DirectoryEntry tmp;
+                            tmp = current->data[ok_ptr];
+                            current->data[ok_ptr] = current->data[i];
+                            current->data[i] = tmp;
+                            current->size--;
+                            --i;
+                            --ok_ptr;
+                        }
+                    }
+                }
+            }
             sort_directory_entries(current);
             printf("\e[H");
             int to_print = winsz.ws_row - 1;
@@ -257,7 +281,7 @@ int main() {
             if (saved_fd_for_copy < 0) {
                 saved_fd_for_copy = -1;
                 vector_char* msg = create_char(winsz.ws_col, '\0');
-                snprintf(msg->data, msg->size, "%s : %s", "Failed to initiize copying of the file at ", strerror(errno));
+                snprintf(msg->data, msg->size, "%s : %s", "Failed to initiize copying of the file", strerror(errno));
                 do_error(msg->data, winsz.ws_row, winsz.ws_col);
                 free_char(msg);
                 free_char(name_of_file);
@@ -392,6 +416,27 @@ int main() {
                 }
                 moved_cursor = true;
             }
+        }
+        else if (c == 'h') {
+            if (filter_out_hidden_files) {
+                filter_out_hidden_files = false;
+                if (had_files_to_drop) {
+                    force_redraw = true;
+                }
+            }
+            else {
+                filter_out_hidden_files = true;
+                for (int i = 0; i < current->size; ++i) {
+                    if (is_one_dot(current->data[i].name) || is_two_dots(current->data[i].name)) {
+                        continue;
+                    }
+                    if (current->data[i].name[0] == '.') {
+                        force_redraw = true;
+                        break;
+                    }
+                }
+            }
+            moved_cursor = true;
         }
         else {
             moved_cursor = true;
