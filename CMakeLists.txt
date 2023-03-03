@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.13)
 
 project(FileManager)
 
-option(SANITIZERS "Build with sanitizers" OFF)
+option(SANITIZERS "Build with sanitizers" ON)
 
 if (SANITIZERS)
     add_compile_options(-fsanitize=address -fsanitize=undefined -fsanitize=leak -fno-sanitize-recover)
@@ -16,5 +16,5 @@ add_executable(manager
 )
 
 target_link_libraries(manager PRIVATE
-    terminal
+    manager_lib
 )

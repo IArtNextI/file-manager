@@ -1,3 +1,3 @@
-add_subdirectory(vector)
+add_subdirectory(manager)
 add_subdirectory(terminal)
-add_subdirectory(cursor)
+add_subdirectory(vector)

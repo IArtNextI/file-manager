@@ -110,6 +110,9 @@ const char *perms_to_str(char *buf, size_t size, int perms) {
 
 vector_DirectoryEntry* load_directory(const char* path) {
     DIR* dir = opendir(path);
+    if (!dir) {
+        return NULL;
+    }
     struct dirent* current = NULL;
     vector_DirectoryEntry* entries = reserve_junk_DirectoryEntry(1);
     while (current = readdir(dir)) {

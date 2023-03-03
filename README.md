@@ -2,8 +2,10 @@
 
 ## Build the project
 
-```
-mkdir build
+From the root of the repository, run following commands:
+
+```bash
+mkdir build && cd build
 cmake ..
-make -j `nproc`
+make
 ```
