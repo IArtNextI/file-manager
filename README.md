@@ -3,8 +3,8 @@
 ## Functionality
 
 - Supports cut-and-paste (`x` for cut, `v` for paste)
-- Supports copy-and-paste (`c` for coy, `v` for paste)
-- Adapts to the size of window
+- Supports copy-and-paste (`c` for copy, `v` for paste)
+- Adapts to the size of the window
 - Supports plugins (more on this later)
 - Highlights filenames based on their type
 - Supports modes for hidden files (`h` to toggle)
