@@ -1,13 +1,17 @@
+#include <sys/types.h>
+#include <unistd.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <sys/wait.h>
+
 void open_file(const char* filename) {
     pid_t pid = fork();
     if (pid == -1) {
         return;
     } else if (pid == 0) {
         // child process
-        char *args[] = { "nano", filename, NULL };
+        char *args[] = { "nano", (char*)filename, NULL };
         execvp(args[0], args);
     } else {
         int status;

@@ -232,7 +232,6 @@ int run_manager(int input_fd, const char* caller_directory) {
             free_char(name_of_file);
         }
         else if (c == '\n') {
-            do_error(current->data[shift + cursor_line - 1].name, winsz.ws_row, winsz.ws_col); // TODO : delete it
             if (current->data[shift + cursor_line - 1].type == DT_DIR) {
                 int len = strlen(current_path);
                 if (is_one_dot(current->data[shift + cursor_line - 1].name)) {
