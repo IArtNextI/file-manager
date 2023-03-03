@@ -8,5 +8,5 @@ add_custom_command(
     DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/txt-to-nano.c
 )
 
-add_custom_target(run ALL
+add_custom_target(plugins ALL
     DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/../file-manager-plugins/libtxt.so)
